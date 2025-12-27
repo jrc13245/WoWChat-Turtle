@@ -1,17 +1,13 @@
 package wowchat.game
 
-import wowchat.common.{WowChatConfig, WowExpansion}
-
 import scala.io.Source
 
 object GameResources {
 
-  lazy val AREA: Map[Int, String] = readIDNameFile(WowChatConfig.getExpansion match {
-    case WowExpansion.Vanilla | WowExpansion.TBC | WowExpansion.WotLK => "pre_cata_areas.csv"
-    case _ => "post_cata_areas.csv"
-  })
+  lazy val AREA: Map[Int, String] = readIDNameFile("pre_cata_areas.csv")
 
-  lazy val ACHIEVEMENT: Map[Int, String] = readIDNameFile("achievements.csv")
+  // Not used in Vanilla/Turtle WoW
+  lazy val ACHIEVEMENT: Map[Int, String] = Map.empty
 
   private def readIDNameFile(file: String) = {
     Source
