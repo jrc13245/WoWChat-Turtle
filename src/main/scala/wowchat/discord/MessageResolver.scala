@@ -23,7 +23,7 @@ object MessageResolver {
 
 class MessageResolver(jda: JDA) {
 
-  protected val armoryUrl = "https://armory.turtlecraft.gg/#!/character"
+  protected val armoryUrl = "https://turtlecraft.gg/armory/Nordanaar"
 
   protected val linkRegexes = Seq(
     "player" -> "\\|Hplayer:(\\w+)\\|h\\[(\\w+)\\]\\|h".r,
