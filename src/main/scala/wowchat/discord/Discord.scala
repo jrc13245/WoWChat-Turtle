@@ -9,6 +9,7 @@ import net.dv8tion.jda.api.JDA.Status
 import net.dv8tion.jda.api.entities.{Activity, MessageType}
 import net.dv8tion.jda.api.entities.Activity.ActivityType
 import net.dv8tion.jda.api.entities.channel.ChannelType
+import net.dv8tion.jda.api.entities.channel.concrete.TextChannel
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel
 import net.dv8tion.jda.api.events.StatusChangeEvent
 import net.dv8tion.jda.api.events.session.ShutdownEvent
@@ -100,7 +101,7 @@ class Discord(discordConnectionCallback: CommonConnectionCallback) extends Liste
   }
 
   def changeRealmStatus(message: String): Unit = {
-    changeStatus(ActivityType.DEFAULT, message)
+    changeStatus(ActivityType.PLAYING, message)
   }
 
   def sendMessageFromWow(from: Option[String], message: String, wowType: Byte, wowChannel: Option[String]): Unit = {
@@ -289,9 +290,9 @@ class Discord(discordConnectionCallback: CommonConnectionCallback) extends Liste
       return
     }
 
-    val channel = event.getChannel
+    val channel = event.getChannel.asTextChannel()
     val channelId = channel.getId
-    val channelName = event.getTextChannel.getName.toLowerCase
+    val channelName = channel.getName.toLowerCase
     val effectiveName = sanitizeName(
       if (event.isWebhookMessage) event.getAuthor.getName else event.getMember.getEffectiveName
     )

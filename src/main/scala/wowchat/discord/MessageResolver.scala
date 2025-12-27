@@ -129,7 +129,7 @@ class MessageResolver(jda: JDA) {
     }
   }
 
-  private def resolveTagMatcher(names: Seq[(String, String)], tag: String, isRole: Boolean): Seq[(String, String)] = {
+  private def resolveTagMatcher(names: Iterable[(String, String)], tag: String, isRole: Boolean): Seq[(String, String)] = {
     val lTag = tag.toLowerCase
     if (lTag == "here") {
       return Seq.empty
@@ -161,7 +161,7 @@ class MessageResolver(jda: JDA) {
     }).map {
       case (name, id) =>
         name -> (if (isRole) s"&$id" else id)
-    }
+    }.toSeq
   }
 
   def resolveEmojis(message: String): String = {
