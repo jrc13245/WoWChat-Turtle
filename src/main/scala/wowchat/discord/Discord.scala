@@ -6,9 +6,11 @@ import com.typesafe.scalalogging.StrictLogging
 import com.vdurmont.emoji.EmojiParser
 import net.dv8tion.jda.api.JDABuilder
 import net.dv8tion.jda.api.JDA.Status
-import net.dv8tion.jda.api.entities.{Activity, ChannelType, MessageType}
+import net.dv8tion.jda.api.entities.{Activity, MessageType}
 import net.dv8tion.jda.api.entities.Activity.ActivityType
-import net.dv8tion.jda.api.events.{ShutdownEvent, StatusChangeEvent}
+import net.dv8tion.jda.api.entities.channel.ChannelType
+import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel
+import net.dv8tion.jda.api.events.StatusChangeEvent
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
 import net.dv8tion.jda.api.requests.{CloseCode, GatewayIntent}
@@ -18,6 +20,59 @@ import wowchat.game.GamePackets
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
+
+object Discord {
+
+  def sendMessage(channel: MessageChannel, message: String): Unit = {
+    splitUpByLength(message, 2000).foreach(channel.sendMessage(_).queue)
+  }
+
+  private def splitUpByLength(message: String, maxLength: Int): Seq[String] = {
+    val retArr = mutable.ArrayBuffer.empty[String]
+
+    var tmp = message
+    while (tmp.length > maxLength) {
+      val subStr = tmp.substring(0, maxLength)
+      val spaceIndex = subStr.lastIndexOf(' ')
+      tmp = if (spaceIndex == -1) {
+        retArr += subStr
+        tmp.substring(maxLength)
+      } else {
+        retArr += subStr.substring(0, spaceIndex)
+        tmp.substring(spaceIndex + 1)
+      }
+    }
+
+    if (tmp.nonEmpty) {
+      retArr += tmp
+    }
+
+    retArr
+  }
+
+  private def splitUpMessageToWow(format: String, name: String, message: String): Seq[String] = {
+    val maxTmpLen = 255 - format
+      .replace("%time", Global.getTime)
+      .replace("%user", name)
+      .replace("%message", "")
+      .length
+
+    splitUpByLength(message, maxTmpLen)
+      .map(message => {
+        val formatted = format
+          .replace("%time", Global.getTime)
+          .replace("%user", name)
+          .replace("%message", message)
+
+        // If the final formatted message is a dot command, it should be disabled. Add a space in front.
+        if (formatted.startsWith(".")) {
+          s" $formatted"
+        } else {
+          formatted
+        }
+      })
+  }
+}
 
 class Discord(discordConnectionCallback: CommonConnectionCallback) extends ListenerAdapter
   with GamePackets with StrictLogging {
@@ -73,12 +128,12 @@ class Discord(discordConnectionCallback: CommonConnectionCallback) extends Liste
           val filter = shouldFilter(channelConfig.filters, formatted)
           logger.info(s"${if (filter) "FILTERED " else ""}WoW->Discord(${channel.getName}) $formatted")
           if (!filter) {
-            channel.sendMessage(formatted).queue()
+            Discord.sendMessage(channel, formatted)
           }
           if (Global.config.discord.enableTagFailedNotifications) {
             errors.foreach(error => {
               Global.game.foreach(_.sendMessageToWow(ChatEvents.CHAT_MSG_WHISPER, error, from))
-              channel.sendMessage(error).queue()
+              Discord.sendMessage(channel, error)
             })
           }
       }
@@ -93,7 +148,7 @@ class Discord(discordConnectionCallback: CommonConnectionCallback) extends Liste
       )
       .foreach(channel => {
         logger.info(s"WoW->Discord(${channel.getName}) $message")
-        channel.sendMessage(message).queue()
+        Discord.sendMessage(channel, message)
       })
   }
 
@@ -112,7 +167,7 @@ class Discord(discordConnectionCallback: CommonConnectionCallback) extends Liste
             .replace("%user", name)
             .replace("%achievement", messageResolver.resolveAchievementId(achievementId))
 
-          discordChannel.sendMessage(formatted).queue()
+          Discord.sendMessage(discordChannel, formatted)
       })
   }
 
@@ -235,7 +290,7 @@ class Discord(discordConnectionCallback: CommonConnectionCallback) extends Liste
     val channel = event.getChannel
     val channelId = channel.getId
     val channelName = event.getChannel.getName.toLowerCase
-    val effectiveName = event.getMember.getEffectiveName
+    val effectiveName = sanitizeName(event.getMember.getEffectiveName)
     val message = (sanitizeMessage(event.getMessage.getContentDisplay) +: event.getMessage.getAttachments.asScala.map(_.getUrl))
       .filter(_.nonEmpty)
       .mkString(" ")
@@ -254,7 +309,7 @@ class Discord(discordConnectionCallback: CommonConnectionCallback) extends Liste
           val finalMessages = if (shouldSendDirectly(message)) {
             Seq(message)
           } else {
-            splitUpMessage(channelConfig.format, effectiveName, message)
+            Discord.splitUpMessageToWow(channelConfig.format, effectiveName, message)
           }
 
           finalMessages.foreach(finalMessage => {
@@ -298,48 +353,12 @@ class Discord(discordConnectionCallback: CommonConnectionCallback) extends Liste
       .exists(filters => filters.enabled && filters.patterns.exists(message.matches))
   }
 
+  def sanitizeName(name: String): String = {
+    name.replace("|", "||")
+  }
+
   def sanitizeMessage(message: String): String = {
     EmojiParser.parseToAliases(message, EmojiParser.FitzpatrickAction.REMOVE)
   }
 
-  def splitUpMessage(format: String, name: String, message: String): Seq[String] = {
-    val retArr = mutable.ArrayBuffer.empty[String]
-    val maxTmpLen = 255 - format
-      .replace("%time", Global.getTime)
-      .replace("%user", name)
-      .replace("%message", "")
-      .length
-
-    var tmp = message
-    while (tmp.length > maxTmpLen) {
-      val subStr = tmp.substring(0, maxTmpLen)
-      val spaceIndex = subStr.lastIndexOf(' ')
-      tmp = if (spaceIndex == -1) {
-        retArr += subStr
-        tmp.substring(maxTmpLen)
-      } else {
-        retArr += subStr.substring(0, spaceIndex)
-        tmp.substring(spaceIndex + 1)
-      }
-    }
-
-    if (tmp.nonEmpty) {
-      retArr += tmp
-    }
-
-    retArr
-      .map(message => {
-        val formatted = format
-          .replace("%time", Global.getTime)
-          .replace("%user", name)
-          .replace("%message", message)
-
-        // If the final formatted message is a dot command, it should be disabled. Add a space in front.
-        if (formatted.startsWith(".")) {
-          s" $formatted"
-        } else {
-          formatted
-        }
-      })
-  }
 }
