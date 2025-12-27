@@ -31,11 +31,8 @@ class RealmConnector(realmConnectionCallback: RealmConnectionCallback) extends S
 
         @throws[Exception]
         override protected def initChannel(socketChannel: SocketChannel): Unit = {
-          val handler = if (WowChatConfig.getExpansion == WowExpansion.Vanilla) {
-            new RealmPacketHandler(realmConnectionCallback)
-          } else {
-            new RealmPacketHandlerTBC(realmConnectionCallback)
-          }
+          // Always use classic/vanilla realm handler for Turtle WoW
+          val handler = new RealmPacketHandler(realmConnectionCallback)
 
           socketChannel.pipeline.addLast(
             new IdleStateHandler(60, 120, 0),

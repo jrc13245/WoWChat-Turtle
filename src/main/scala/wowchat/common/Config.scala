@@ -12,7 +12,7 @@ import scala.collection.JavaConverters._
 import scala.reflect.runtime.universe.{TypeTag, typeOf}
 
 case class WowChatConfig(discord: DiscordConfig, wow: Wow, guildConfig: GuildConfig, channels: Seq[ChannelConfig], filters: Option[FiltersConfig])
-case class DiscordConfig(token: String, enableDotCommands: Boolean, dotCommandsWhitelist: Set[String], enableCommandsChannels: Set[String], enableTagFailedNotifications: Boolean, itemDatabase: Option[String])
+case class DiscordConfig(token: String, enableDotCommands: Boolean, dotCommandsWhitelist: Set[String], enableCommandsChannels: Set[String], enableTagFailedNotifications: Boolean, itemDatabase: Option[String], enableGuildCommands: Boolean, protectedGuildCommandChannels: Set[String], protectedGuildCommandRoles: Set[String])
 case class Wow(locale: String, platform: Platform.Value, realmBuild: Option[Int], gameBuild: Option[Int], realmlist: RealmListConfig, account: Array[Byte], password: String, character: String, enableServerMotd: Boolean)
 case class RealmListConfig(name: String, host: String, port: Int)
 case class GuildConfig(notificationConfigs: Map[String, GuildNotificationConfig])
@@ -54,7 +54,12 @@ object WowChatConfig extends GamePackets {
         getOpt[util.List[String]](discordConf, "enable_commands_channels")
           .getOrElse(new util.ArrayList[String]()).asScala.map(_.toLowerCase).toSet,
         getOpt[Boolean](discordConf, "enable_tag_failed_notifications").getOrElse(true),
-        getOpt[String](discordConf, "item_database")
+        getOpt[String](discordConf, "item_database"),
+        getOpt[Boolean](discordConf, "enable_guild_commands").getOrElse(false),
+        getOpt[util.List[String]](discordConf, "protected_guild_command_channels")
+          .getOrElse(new util.ArrayList[String]()).asScala.map(_.toLowerCase).toSet,
+        getOpt[util.List[String]](discordConf, "protected_guild_command_roles")
+          .getOrElse(new util.ArrayList[String]()).asScala.map(_.toLowerCase).toSet
       ),
       Wow(
         getOpt[String](wowConf, "locale").getOrElse("enUS"),

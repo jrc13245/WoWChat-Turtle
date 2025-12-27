@@ -11,6 +11,7 @@ import net.dv8tion.jda.api.entities.Activity.ActivityType
 import net.dv8tion.jda.api.entities.channel.ChannelType
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel
 import net.dv8tion.jda.api.events.StatusChangeEvent
+import net.dv8tion.jda.api.events.session.ShutdownEvent
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
 import net.dv8tion.jda.api.requests.{CloseCode, GatewayIntent}
@@ -78,7 +79,7 @@ class Discord(discordConnectionCallback: CommonConnectionCallback) extends Liste
   with GamePackets with StrictLogging {
 
   private val jda = JDABuilder
-    .createDefault(Global.config.discord.token, GatewayIntent.GUILD_MESSAGES, GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_PRESENCES, GatewayIntent.GUILD_EMOJIS)
+    .createDefault(Global.config.discord.token, GatewayIntent.GUILD_MESSAGES, GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_PRESENCES, GatewayIntent.GUILD_EMOJIS_AND_STICKERS, GatewayIntent.MESSAGE_CONTENT)
     .setMemberCachePolicy(MemberCachePolicy.ALL)
     .disableCache(CacheFlag.VOICE_STATE)
     .addEventListeners(this)
@@ -118,10 +119,11 @@ class Discord(discordConnectionCallback: CommonConnectionCallback) extends Liste
             .replace("_", "\\_")
             .replace("~", "\\~")
 
+          val userName = from.map(messageResolver.resolvePlayerNameAsLink).getOrElse("")
           val formatted = channelConfig
             .format
             .replace("%time", Global.getTime)
-            .replace("%user", from.getOrElse(""))
+            .replace("%user", userName)
             .replace("%message", parsedResolvedTags)
             .replace("%target", wowChannel.getOrElse(""))
 
@@ -188,7 +190,7 @@ class Discord(discordConnectionCallback: CommonConnectionCallback) extends Liste
         })
         val configChannelsNames = configChannels.map(_._1)
 
-        val discordTextChannels = event.getEntity.getTextChannels.asScala
+        val discordTextChannels = event.getJDA.getTextChannelCache.asScala
         val eligibleDiscordChannels = discordTextChannels
           .filter(channel =>
             configChannelsNames.contains(channel.getName.toLowerCase) ||
@@ -289,8 +291,11 @@ class Discord(discordConnectionCallback: CommonConnectionCallback) extends Liste
 
     val channel = event.getChannel
     val channelId = channel.getId
-    val channelName = event.getChannel.getName.toLowerCase
-    val effectiveName = sanitizeName(event.getMember.getEffectiveName)
+    val channelName = event.getTextChannel.getName.toLowerCase
+    val effectiveName = sanitizeName(
+      if (event.isWebhookMessage) event.getAuthor.getName else event.getMember.getEffectiveName
+    )
+    val member = if (event.isWebhookMessage) None else Option(event.getMember)
     val message = (sanitizeMessage(event.getMessage.getContentDisplay) +: event.getMessage.getAttachments.asScala.map(_.getUrl))
       .filter(_.nonEmpty)
       .mkString(" ")
@@ -300,7 +305,7 @@ class Discord(discordConnectionCallback: CommonConnectionCallback) extends Liste
       logger.error(s"Received a message in channel ${channel.getName} but the content was empty. You likely forgot to enable MESSAGE CONTENT INTENT for your bot in the Discord Developers portal.")
     }
 
-    if ((enableCommandsChannels.nonEmpty && !enableCommandsChannels.contains(channelName)) || !CommandHandler(channel, message)) {
+    if ((enableCommandsChannels.nonEmpty && !enableCommandsChannels.contains(channelName)) || !CommandHandler(channel, message, member)) {
       // send to all configured wow channels
       Global.discordToWow
         .get(channelName)

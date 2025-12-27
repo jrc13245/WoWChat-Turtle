@@ -7,4 +7,7 @@ trait GameCommandHandler {
 
   def handleWho(arguments: Option[String]): Option[String]
   def handleGmotd(): Option[String]
+  def sendGuildInvite(name: String): Unit
+  def sendGuildKick(name: String): Unit
+  def sendAddIgnore(name: String): Unit
 }

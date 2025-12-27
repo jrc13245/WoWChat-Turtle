@@ -23,7 +23,10 @@ object MessageResolver {
 
 class MessageResolver(jda: JDA) {
 
+  protected val armoryUrl = "https://armory.turtlecraft.gg/#!/character"
+
   protected val linkRegexes = Seq(
+    "player" -> "\\|Hplayer:(\\w+)\\|h\\[(\\w+)\\]\\|h".r,
     "item" -> "\\|.+?\\|Hitem:(\\d+):.+?\\|h\\[(.+?)]\\|h\\|r".r,
     "spell" -> "\\|.+?\\|(?:Hspell|Henchant)?:(\\d+).*?\\|h\\[(.+?)]\\|h\\|r".r,
     "quest" -> "\\|.+?\\|Hquest:(\\d+):.+?\\|h\\[(.+?)]\\|h\\|r".r
@@ -41,10 +44,22 @@ class MessageResolver(jda: JDA) {
 
   def resolveLinks(message: String): String = {
     linkRegexes.foldLeft(message) {
+      case (result, ("player", regex)) =>
+        regex.replaceAllIn(result, m => {
+          s"[${m.group(2)}]($armoryUrl/${m.group(1)})"
+        })
       case (result, (classicDbKey, regex)) =>
         regex.replaceAllIn(result, m => {
           s"[[${m.group(2)}]]($linkSite?$classicDbKey=${m.group(1)})"
         })
+    }
+  }
+
+  def resolvePlayerNameAsLink(name: String): String = {
+    if (name.nonEmpty) {
+      s"[$name]($armoryUrl/$name)"
+    } else {
+      name
     }
   }
 
@@ -75,7 +90,7 @@ class MessageResolver(jda: JDA) {
       val user = member.getUser
       s"${user.getName}#${user.getDiscriminator}" -> user.getId
     })
-    val roleNames = jda.getRoles.asScala
+    val roleNames = jda.getRoleCache.asScala
       .filterNot(_.getName == "@everyone")
       .map(role => role.getName -> role.getId)
 
@@ -153,8 +168,8 @@ class MessageResolver(jda: JDA) {
     val regex = "(?<=:).*?(?=:)".r
 
     // could do some caching here later
-    val emojiMap = jda.getEmotes.asScala.map(emote => {
-      emote.getName.toLowerCase -> emote.getId
+    val emojiMap = jda.getEmojiCache.asScala.map(emoji => {
+      emoji.getName.toLowerCase -> emoji.getId
     }).toMap
 
     val alreadyResolved = mutable.Set.empty[String]

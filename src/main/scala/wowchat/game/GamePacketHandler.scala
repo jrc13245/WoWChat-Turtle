@@ -205,6 +205,25 @@ class GamePacketHandler(realmId: Int, realmName: String, sessionKey: Array[Byte]
     })
   }
 
+  override def sendGuildInvite(name: String): Unit = {
+    ctx.get.writeAndFlush(buildSingleStringPacket(CMSG_GUILD_INVITE, name.toLowerCase))
+  }
+
+  override def sendGuildKick(name: String): Unit = {
+    ctx.get.writeAndFlush(buildSingleStringPacket(CMSG_GUILD_REMOVE, name.toLowerCase))
+  }
+
+  override def sendAddIgnore(name: String): Unit = {
+    ctx.get.writeAndFlush(buildSingleStringPacket(CMSG_ADD_IGNORE, name.toLowerCase))
+  }
+
+  protected def buildSingleStringPacket(opcode: Int, name: String): Packet = {
+    val byteBuf = PooledByteBufAllocator.DEFAULT.buffer(16, 32)
+    byteBuf.writeBytes(name.getBytes("UTF-8"))
+    byteBuf.writeByte(0)
+    Packet(opcode, byteBuf)
+  }
+
   protected def buildWhoMessage(name: String): ByteBuf = {
     val byteBuf = PooledByteBufAllocator.DEFAULT.buffer(64, 64)
     byteBuf.writeIntLE(0)  // level min

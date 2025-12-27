@@ -1,11 +1,13 @@
 package wowchat.commands
 
 import com.typesafe.scalalogging.StrictLogging
-import net.dv8tion.jda.api.entities.MessageChannel
+import net.dv8tion.jda.api.entities.Member
+import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel
 import wowchat.common.Global
 import wowchat.discord.Discord
 import wowchat.game.{GamePackets, GameResources, GuildInfo, GuildMember}
 
+import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.util.Try
 
@@ -22,9 +24,35 @@ object CommandHandler extends StrictLogging {
   // gross. rewrite
   var whoRequest: WhoRequest = _
 
+  // Check if member has permission to use protected commands
+  private def hasProtectedPermission(fromChannel: MessageChannel, member: Option[Member]): Boolean = {
+    val channelName = fromChannel.getName.toLowerCase
+    val allowedChannels = Global.config.discord.protectedGuildCommandChannels
+    val allowedRoles = Global.config.discord.protectedGuildCommandRoles
+
+    // Check channel restriction
+    val channelAllowed = allowedChannels.isEmpty || allowedChannels.contains(channelName)
+    if (!channelAllowed) {
+      return false
+    }
+
+    // Check role restriction (if roles are configured)
+    if (allowedRoles.isEmpty) {
+      return true // No role restriction configured
+    }
+
+    member.exists(m => {
+      m.getRoles.asScala.exists(role => allowedRoles.contains(role.getName.toLowerCase))
+    })
+  }
+
   // returns back the message as an option if unhandled
   // needs to be refactored into a Map[String, <Intelligent Command Handler Function>]
-  def apply(fromChannel: MessageChannel, message: String): Boolean = {
+  def apply(fromChannel: MessageChannel, message: String, member: Option[Member] = None): Boolean = {
+    if (!Global.config.discord.enableGuildCommands && !message.startsWith(trigger)) {
+      return false
+    }
+
     if (!message.startsWith(trigger)) {
       return false
     }
@@ -32,6 +60,14 @@ object CommandHandler extends StrictLogging {
     val splt = message.substring(trigger.length).split(" ")
     val possibleCommand = splt(0).toLowerCase
     val arguments = if (splt.length > 1 && splt(1).length <= 16) Some(splt(1)) else None
+
+    def protectedCommand(commandName: String, callback: () => Option[String]): Option[String] = {
+      if (hasProtectedPermission(fromChannel, member)) {
+        callback()
+      } else {
+        Some(s"You don't have permission to use '$commandName'")
+      }
+    }
 
     Try {
       possibleCommand match {
@@ -51,6 +87,58 @@ object CommandHandler extends StrictLogging {
             Discord.sendMessage(fromChannel, NOT_ONLINE)
             return true
           })(_.handleGmotd())
+        case "ginvite" =>
+          Global.game.fold({
+            Discord.sendMessage(fromChannel, NOT_ONLINE)
+            return true
+          })(game => {
+            protectedCommand("ginvite", () => {
+              arguments match {
+                case Some(name) =>
+                  game.sendGuildInvite(name)
+                  Some(s"Invited '$name' to the guild")
+                case None =>
+                  Some("Usage: ?ginvite <name>")
+              }
+            })
+          })
+        case "gkick" =>
+          Global.game.fold({
+            Discord.sendMessage(fromChannel, NOT_ONLINE)
+            return true
+          })(game => {
+            protectedCommand("gkick", () => {
+              arguments match {
+                case Some(name) =>
+                  game.sendGuildKick(name)
+                  Some(s"Kicked '$name' from the guild")
+                case None =>
+                  Some("Usage: ?gkick <name>")
+              }
+            })
+          })
+        case "ignore" =>
+          Global.game.fold({
+            Discord.sendMessage(fromChannel, NOT_ONLINE)
+            return true
+          })(game => {
+            protectedCommand("ignore", () => {
+              arguments match {
+                case Some(name) =>
+                  game.sendAddIgnore(name)
+                  Some(s"Added '$name' to ignore list")
+                case None =>
+                  Some("Usage: ?ignore <name>")
+              }
+            })
+          })
+        case "help" =>
+          Global.game.fold({
+            Discord.sendMessage(fromChannel, NOT_ONLINE)
+            return true
+          })(_ => {
+            Some("Commands: `?who [name]`, `?online`, `?gmotd`, `?help`\nProtected: `?ginvite <name>`, `?gkick <name>`, `?ignore <name>`")
+          })
       }
     }.fold(throwable => {
       // command not found, should send to wow chat

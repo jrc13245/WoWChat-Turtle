@@ -9,8 +9,6 @@ import wowchat.realm.{RealmConnectionCallback, RealmConnector}
 import com.typesafe.scalalogging.StrictLogging
 import io.netty.channel.nio.NioEventLoopGroup
 
-import scala.io.Source
-
 object WoWChat extends StrictLogging {
 
   private val RELEASE = "v1.4.0-t1.19"
@@ -24,12 +22,6 @@ object WoWChat extends StrictLogging {
       "wowchat.conf"
     }
     Global.config = WowChatConfig(confFile)
-
-    try {
-      checkForNewVersion
-    } catch {
-      case e: Exception => logger.error("Failed to check for a new version!", e)
-    }
 
     val gameConnectionController: CommonConnectionCallback = new CommonConnectionCallback {
 
@@ -78,23 +70,5 @@ object WoWChat extends StrictLogging {
 
       override def error: Unit = sys.exit(1)
     })
-  }
-
-  private def checkForNewVersion = {
-    // This is JSON, but I really just didn't want to import a full blown JSON library for one string.
-    val data = Source.fromURL("https://api.github.com/repos/Zebouski/WoWChat-Turtle/releases/latest").mkString
-    val regex = "\"tag_name\":\"(.+?)\",".r
-    val repoTagName = regex
-      .findFirstMatchIn(data)
-      .map(_.group(1))
-      .getOrElse("NOT FOUND")
-
-    if (repoTagName != RELEASE) {
-      logger.error( "~~~ !!!                YOUR WoWChat VERSION IS OUT OF DATE                !!! ~~~")
-      logger.error(s"~~~ !!!                     Current Version:  $RELEASE                      !!! ~~~")
-      logger.error(s"~~~ !!!                     Repo    Version:  $repoTagName                      !!! ~~~")
-      logger.error( "~~~ !!! RUN git pull OR GO TO https://github.com/Zebouski/WoWChat-Turtle TO UPDATE !!! ~~~")
-      logger.error( "~~~ !!!                YOUR WoWChat VERSION IS OUT OF DATE                !!! ~~~")
-    }
   }
 }
