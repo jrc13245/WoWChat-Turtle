@@ -56,6 +56,10 @@ class GamePacketHandler(realmId: Int, realmName: String, sessionKey: Array[Byte]
   private var wardenHandler: Option[WardenHandler] = None
   private var receivedCharEnum = false
 
+  // Ignore list: maps lowercase name -> GUID for unignore functionality
+  protected val ignoreList = mutable.Map.empty[String, Long]
+  private val pendingIgnoreQueries = mutable.Set.empty[Long]
+
   override def channelInactive(ctx: ChannelHandlerContext): Unit = {
     executorService.shutdown()
     this.ctx = None
@@ -217,8 +221,17 @@ class GamePacketHandler(realmId: Int, realmName: String, sessionKey: Array[Byte]
     ctx.get.writeAndFlush(buildSingleStringPacket(CMSG_ADD_IGNORE, name.toLowerCase))
   }
 
-  override def sendDelIgnore(name: String): Unit = {
-    ctx.get.writeAndFlush(buildSingleStringPacket(CMSG_DEL_IGNORE, name.toLowerCase))
+  override def sendDelIgnore(name: String): Option[String] = {
+    ignoreList.get(name.toLowerCase) match {
+      case Some(guid) =>
+        val byteBuf = PooledByteBufAllocator.DEFAULT.buffer(8, 8)
+        byteBuf.writeLongLE(guid)
+        ctx.get.writeAndFlush(Packet(CMSG_DEL_IGNORE, byteBuf))
+        ignoreList.remove(name.toLowerCase)
+        None
+      case None =>
+        Some(s"'$name' is not in the ignore list")
+    }
   }
 
   protected def buildSingleStringPacket(opcode: Int, name: String): Packet = {
@@ -273,6 +286,7 @@ class GamePacketHandler(realmId: Int, realmName: String, sessionKey: Array[Byte]
       case SMSG_WHO => handle_SMSG_WHO(msg)
       case SMSG_SERVER_MESSAGE => handle_SMSG_SERVER_MESSAGE(msg)
       case SMSG_INVALIDATE_PLAYER => handle_SMSG_INVALIDATE_PLAYER(msg)
+      case SMSG_IGNORE_LIST => handle_SMSG_IGNORE_LIST(msg)
 
       case SMSG_WARDEN_DATA => handle_SMSG_WARDEN_DATA(msg)
 
@@ -345,6 +359,14 @@ class GamePacketHandler(realmId: Int, realmName: String, sessionKey: Array[Byte]
 
   private def handle_SMSG_NAME_QUERY(msg: Packet): Unit = {
     val nameQueryMessage = parseNameQuery(msg)
+
+    // Check if this is a response for an ignore list query
+    if (pendingIgnoreQueries.contains(nameQueryMessage.guid)) {
+      ignoreList += nameQueryMessage.name.toLowerCase -> nameQueryMessage.guid
+      pendingIgnoreQueries -= nameQueryMessage.guid
+      playerRoster += nameQueryMessage.guid -> Player(nameQueryMessage.name, nameQueryMessage.charClass)
+      logger.debug(s"Added ${nameQueryMessage.name} to ignore list cache")
+    }
 
     queuedChatMessages
       .remove(nameQueryMessage.guid)
@@ -777,6 +799,34 @@ class GamePacketHandler(realmId: Int, realmName: String, sessionKey: Array[Byte]
 
   protected def parseInvalidatePlayer(msg: Packet): Long = {
     msg.byteBuf.readLongLE
+  }
+
+  private def handle_SMSG_IGNORE_LIST(msg: Packet): Unit = {
+    // Clear the current ignore list and pending queries
+    ignoreList.clear()
+    pendingIgnoreQueries.clear()
+
+    val count = msg.byteBuf.readByte & 0xFF
+    logger.debug(s"Received ignore list with $count entries")
+
+    (0 until count).foreach { _ =>
+      val guid = msg.byteBuf.readLongLE
+      pendingIgnoreQueries += guid
+
+      // Check if we already know this player's name from the roster
+      playerRoster.get(guid) match {
+        case Some(player) =>
+          ignoreList += player.name.toLowerCase -> guid
+          pendingIgnoreQueries -= guid
+        case None =>
+          // Send name query to get the player's name
+          ctx.foreach { c =>
+            val out = PooledByteBufAllocator.DEFAULT.buffer(8, 8)
+            out.writeLongLE(guid)
+            c.writeAndFlush(Packet(CMSG_NAME_QUERY, out))
+          }
+      }
+    }
   }
 
   private def handle_SMSG_WARDEN_DATA(msg: Packet): Unit = {

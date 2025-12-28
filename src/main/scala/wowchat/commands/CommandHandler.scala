@@ -140,8 +140,10 @@ object CommandHandler extends StrictLogging {
             protectedCommand("unignore", () => {
               arguments match {
                 case Some(name) =>
-                  game.sendDelIgnore(name)
-                  Some(s"Removed '$name' from ignore list")
+                  game.sendDelIgnore(name) match {
+                    case Some(error) => Some(error)
+                    case None => Some(s"Removed '$name' from ignore list")
+                  }
                 case None =>
                   Some("Usage: ?unignore <name>")
               }
