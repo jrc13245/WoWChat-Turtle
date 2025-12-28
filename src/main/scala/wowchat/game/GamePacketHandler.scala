@@ -217,6 +217,10 @@ class GamePacketHandler(realmId: Int, realmName: String, sessionKey: Array[Byte]
     ctx.get.writeAndFlush(buildSingleStringPacket(CMSG_ADD_IGNORE, name.toLowerCase))
   }
 
+  override def sendDelIgnore(name: String): Unit = {
+    ctx.get.writeAndFlush(buildSingleStringPacket(CMSG_DEL_IGNORE, name.toLowerCase))
+  }
+
   protected def buildSingleStringPacket(opcode: Int, name: String): Packet = {
     val byteBuf = PooledByteBufAllocator.DEFAULT.buffer(16, 32)
     byteBuf.writeBytes(name.getBytes("UTF-8"))

@@ -132,12 +132,27 @@ object CommandHandler extends StrictLogging {
               }
             })
           })
+        case "unignore" =>
+          Global.game.fold({
+            Discord.sendMessage(fromChannel, NOT_ONLINE)
+            return true
+          })(game => {
+            protectedCommand("unignore", () => {
+              arguments match {
+                case Some(name) =>
+                  game.sendDelIgnore(name)
+                  Some(s"Removed '$name' from ignore list")
+                case None =>
+                  Some("Usage: ?unignore <name>")
+              }
+            })
+          })
         case "help" =>
           Global.game.fold({
             Discord.sendMessage(fromChannel, NOT_ONLINE)
             return true
           })(_ => {
-            Some("Commands: `?who [name]`, `?online`, `?gmotd`, `?help`\nProtected: `?ginvite <name>`, `?gkick <name>`, `?ignore <name>`")
+            Some("Commands: `?who [name]`, `?online`, `?gmotd`, `?help`\nProtected: `?ginvite <name>`, `?gkick <name>`, `?ignore <name>`, `?unignore <name>`")
           })
       }
     }.fold(throwable => {
